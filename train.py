@@ -15,7 +15,7 @@ from allennlp.modules.seq2vec_encoders import (
 )
 from allennlp.modules.text_field_embedders import BasicTextFieldEmbedder
 from allennlp.nn import Activation
-from allennlp.training import Checkpointer, GradientDescentTrainer
+from allennlp.training import Checkpointer, GradientDescentTrainer, TensorboardWriter
 from torch.optim import Adam
 
 from dataset_readers import TokenReader
@@ -228,6 +228,10 @@ def optimize(trial: optuna.Trial) -> float:
     vocab.save_to_files(save_dir / 'vocab')
     logging.info(f'Saved vocab files to {vocab_dir}')
 
+    tensorboard_writer = TensorboardWriter(
+        serialization_dir=FLAGS.save_root_dir
+    )
+
     trainer = GradientDescentTrainer(
         model=model,
         optimizer=optimizer,
@@ -238,6 +242,7 @@ def optimize(trial: optuna.Trial) -> float:
         num_epochs=20,
         serialization_dir=save_dir,
         checkpointer=checkpointer,
+        tensorboard_writer=tensorboard_writer,
         cuda_device=FLAGS.cuda_device,
         grad_norm=5.0
     )
