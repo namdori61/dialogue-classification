@@ -66,9 +66,12 @@ def create_sentence_encoder(params):
 def create_dialogue_encoder(params, extra_dim):
     if params['sentence_encoder_type'] == 'bilstm':
         params['sentence_encoder_hidden_dim'] = params['sentence_encoder_hidden_dim'] * 2
+    elif params['sentence_encoder_type'] == 'boe':
+        params['sentence_encoder_hidden_dim'] = params['token_embedding_dim']
     if params['dialogue_encoder_type'] == 'boe':
+        input_dim = params['sentence_encoder_hidden_dim'] + extra_dim
         encoder = BagOfEmbeddingsEncoder(
-            embedding_dim=params['sentence_encoder_hidden_dim'],
+            embedding_dim=input_dim,
             averaged=True
         )
     elif params['dialogue_encoder_type'] == 'lstm':
