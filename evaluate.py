@@ -11,7 +11,7 @@ from allennlp.modules.seq2vec_encoders import (
 from allennlp.modules.text_field_embedders import BasicTextFieldEmbedder
 from allennlp.nn import Activation
 from allennlp.nn import util as nn_util
-from allennlp.training.metrics import F1Measure
+from allennlp.training.metrics import F1Measure, Auc
 from tqdm import tqdm
 
 from dataset_readers import TokenReader
@@ -165,6 +165,7 @@ def main(argv):
 
     positive_label_index = vocab.get_token_index('fraud', namespace='labels')
     f1_measure = F1Measure(positive_label=positive_label_index)
+    auc = Auc(positive_label=positive_label_index)
 
     logging.info('Running evaluation')
     model.get_metrics(reset=True)
@@ -173,6 +174,8 @@ def main(argv):
         batch_output_dict = model(**batch)
         f1_measure(predictions=batch_output_dict['logits'],
                    gold_labels=batch['label'])
+        auc(predictions=torch.argmax(batch_output_dict['logits'],dim=1),
+            gold_labels=batch['label'])
 
     metrics = model.get_metrics()
     accuracy = metrics['accuracy']
@@ -182,9 +185,11 @@ def main(argv):
     precision = additional_metrics['precision']
     recall = additional_metrics['recall']
     f1_score = additional_metrics['f1']
+    auc_score = auc.get_metric()
     print(f'Precision: {precision:.4f}')
     print(f'Recall: {recall:.4f}')
     print(f'F1: {f1_score:.4f}')
+    print(f'AUC: {auc_score:.4f}')
 
 
 def validate_model_path_flags(flags_dict):
