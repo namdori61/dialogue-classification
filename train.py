@@ -46,6 +46,8 @@ flags.DEFINE_integer('max_dialogue_length', default=None,
                      help='Maximum number of sentences per dialogue')
 flags.DEFINE_integer('max_sentence_length', default=None,
                      help='Maximum number of words per sentence')
+flags.DEFINE_string('val_metric', default='accuracy',
+                    help='Validation metric to optimize')
 flags.DEFINE_string('optuna_study_name', default=None,
                     help='Name of Optuna study')
 flags.DEFINE_integer('optuna_num_trials', default=100,
@@ -232,29 +234,53 @@ def optimize(trial: optuna.Trial) -> float:
         serialization_dir=FLAGS.save_root_dir
     )
 
-    trainer = GradientDescentTrainer(
-        model=model,
-        optimizer=optimizer,
-        data_loader=train_loader,
-        patience=2,
-        validation_metric='+accuracy',
-        validation_data_loader=dev_loader,
-        num_epochs=20,
-        serialization_dir=save_dir,
-        checkpointer=checkpointer,
-        tensorboard_writer=tensorboard_writer,
-        cuda_device=FLAGS.cuda_device,
-        grad_norm=5.0
-    )
-    metrics = trainer.train()
-    return metrics['best_validation_accuracy']
+    if FLAGS.val_metric == 'accuracy':
+        trainer = GradientDescentTrainer(
+            model=model,
+            optimizer=optimizer,
+            data_loader=train_loader,
+            patience=2,
+            validation_metric='+accuracy',
+            validation_data_loader=dev_loader,
+            num_epochs=20,
+            serialization_dir=save_dir,
+            checkpointer=checkpointer,
+            tensorboard_writer=tensorboard_writer,
+            cuda_device=FLAGS.cuda_device,
+            grad_norm=5.0
+        )
+        metrics = trainer.train()
+        return metrics['best_validation_accuracy']
+    elif FLAGS.val_metric == 'loss':
+        trainer = GradientDescentTrainer(
+            model=model,
+            optimizer=optimizer,
+            data_loader=train_loader,
+            patience=2,
+            validation_metric='-loss',
+            validation_data_loader=dev_loader,
+            num_epochs=20,
+            serialization_dir=save_dir,
+            checkpointer=checkpointer,
+            tensorboard_writer=tensorboard_writer,
+            cuda_device=FLAGS.cuda_device,
+            grad_norm=5.0
+        )
+        metrics = trainer.train()
+        return metrics['best_validation_loss']
 
 
 def main(argv):
-    study = optuna.create_study(storage=FLAGS.optuna_storage,
-                                study_name=FLAGS.optuna_study_name,
-                                direction='maximize',
-                                load_if_exists=True)
+    if FLAGS.val_metric == 'accuracy':
+        study = optuna.create_study(storage=FLAGS.optuna_storage,
+                                    study_name=FLAGS.optuna_study_name,
+                                    direction='maximize',
+                                    load_if_exists=True)
+    elif FLAGS.val_metric == 'loss':
+        study = optuna.create_study(storage=FLAGS.optuna_storage,
+                                    study_name=FLAGS.optuna_study_name,
+                                    direction='minimize',
+                                    load_if_exists=True)
     study.optimize(optimize, n_trials=FLAGS.optuna_num_trials)
 
 
