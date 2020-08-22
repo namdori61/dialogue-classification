@@ -14,6 +14,8 @@ flags.DEFINE_string('input_path', default=None,
                     help='Path to input data')
 flags.DEFINE_string('output_path', default=None,
                     help='Path to save output data')
+flags.DEFINE_integer('sampling_multiplier', default=1,
+                     help='How many times normal instances are compared to fraud instances')
 
 random.seed(123)
 
@@ -31,13 +33,14 @@ def main(argv):
     logging.info(f'Number of data: {num_data}')
     logging.info(f'Number of fraud data: {len(fraud_indices_set)}')
 
-    logging.info(f'Will sample {len(fraud_indices_set)} non-fraud data')
+    logging.info(f'Sample multiplier: {FLAGS.sampling_multiplier}')
+    logging.info(f'Will sample {len(fraud_indices_set) * FLAGS.sampling_multiplier} non-fraud data')
 
     non_fraud_indices_set = set(range(num_data)) - fraud_indices_set
     non_fraud_indices_list = list(non_fraud_indices_set)
     random.shuffle(non_fraud_indices_list)
     sampled_non_fraud_indices_list = (
-        non_fraud_indices_list[:len(fraud_indices_set)]
+        non_fraud_indices_list[:len(fraud_indices_set) * FLAGS.sampling_multiplier]
     )
 
     survived_indices_set = (
