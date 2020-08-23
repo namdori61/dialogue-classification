@@ -3,6 +3,7 @@ Trains a model.
 """
 import json
 from pathlib import Path
+import pickle
 
 import optuna
 from absl import app, flags, logging
@@ -282,6 +283,12 @@ def main(argv):
                                     direction='minimize',
                                     load_if_exists=True)
     study.optimize(optimize, n_trials=FLAGS.optuna_num_trials)
+
+    logging.info(f'The best trial is : \n{study.best_trial}')
+    logging.info(f'The best value is : \n{study.best_value}')
+    logging.info(f'The best parameters are : \n{study.best_params}')
+
+    pickle.dump(study, open(FLAGS.save_root_dir + '/' + FLAGS.optuna_study_name + '.pkl', 'wb'))
 
 
 if __name__ == '__main__':
