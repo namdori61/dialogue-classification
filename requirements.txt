@@ -1,0 +1,12 @@
+absl-py
+jsonlines
+koalanlp
+konlpy
+more-itertools
+python-dateutil
+tqdm
+soynlp
+soyspacing
+torch==1.6.0
+allennlp==v1.1.0rc3
+optuna
