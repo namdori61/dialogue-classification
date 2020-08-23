@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 import torch
+import torch.nn.functional as F
 from absl import app, flags, logging
 from allennlp.data import PyTorchDataLoader, Vocabulary
 from allennlp.modules import Embedding, FeedForward
@@ -174,7 +175,7 @@ def main(argv):
         batch_output_dict = model(**batch)
         f1_measure(predictions=batch_output_dict['logits'],
                    gold_labels=batch['label'])
-        auc(predictions=torch.argmax(batch_output_dict['logits'],dim=1),
+        auc(predictions=F.softmax(batch_output_dict['logits'],dim=1)[:,1],
             gold_labels=batch['label'])
 
     metrics = model.get_metrics()
