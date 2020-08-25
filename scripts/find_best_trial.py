@@ -1,5 +1,6 @@
 import optuna
 from absl import app, flags, logging
+import pickle
 
 FLAGS = flags.FLAGS
 
@@ -7,6 +8,8 @@ flags.DEFINE_string('optuna_storage', default='sqlite:///optuna_studies.db',
                     help='URI to optuna storage')
 flags.DEFINE_string('optuna_study_name', default=None,
                     help='Study name from which find the best trial')
+flags.DEFINE_string('load_dir', default=None,
+                    help='Root path to load optuna study')
 
 
 def main(argv):
@@ -32,8 +35,14 @@ def main(argv):
     else:
         logging.info(f'Find the best trial from '
                      f'study {FLAGS.optuna_study_name}.')
-        study = optuna.load_study(study_name=FLAGS.optuna_study_name,
-                                  storage=FLAGS.optuna_storage)
+        try:
+            study = optuna.load_study(study_name=FLAGS.optuna_study_name,
+                                      storage=FLAGS.optuna_storage)
+        except:
+            if not FLAGS.load_dir:
+                pickle.load(open(FLAGS.load_dir + '/' + FLAGS.optuna_study_name + '.pkl', 'rb'))
+            else:
+                ValueError('No data to load')
         logging.info(f'Name: {study.study_name}')
         logging.info(f'Direction: {study.direction.name}')
 
