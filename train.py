@@ -224,6 +224,7 @@ def optimize(trial: optuna.Trial) -> float:
         params['max_dialogue_length'] = FLAGS.max_dialogue_length
         params['max_sentence_length'] = FLAGS.max_sentence_length
         params['min_token_count'] = FLAGS.min_token_count
+        params['validation_metric'] = FLAGS.val_metric
         json.dump(params, f, sort_keys=True, indent=4)
         logging.info(f'Params: {params}')
         logging.info(f'Saved params file to {params_path}')
