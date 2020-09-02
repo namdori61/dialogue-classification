@@ -17,15 +17,17 @@ from allennlp.modules.seq2vec_encoders import (
 from allennlp.modules.text_field_embedders import BasicTextFieldEmbedder
 from allennlp.nn import Activation
 from allennlp.training import Checkpointer, GradientDescentTrainer, TensorboardWriter
+from torch.nn import Module
 from torch.optim import Adam
 
-from dataset_readers import TokenReader
-from models import TokenModel
+from dataset_readers import TokenReader, JamoReader
+from models import TokenModel, JamoCnnModel
+from modules import CnnDialogueEncoder
 
 FLAGS = flags.FLAGS
 
 flags.DEFINE_enum('model_type', default=None,
-                  enum_values=['token'],
+                  enum_values=['token', 'jamo_cnn'],
                   help='Model type')
 flags.DEFINE_enum('sentence_encoder_type', default=None,
                   enum_values=['boe', 'lstm', 'bilstm'],
@@ -110,19 +112,23 @@ def create_dialogue_encoder(trial: optuna.Trial,
         raise ValueError('Unknown dialogue_encoder_type')
     return encoder
 
+def create_dialogue_cnn_encoder(trial: optuna.Trial,
+                                token_embedding_dim: int) -> Module:
+    encoder = CnnDialogueEncoder(
+        embedding_dim=token_embedding_dim,
+        num_filters=trial.suggest_categorical(
+            name='dialogue_cnn_encoder_num_filters', choices=[50, 100]
+        ),
+        ngram_filter_sizes=(3, 4, 5)
+    )
+    return encoder
+
 
 def create_model(trial: optuna.Trial,
                  vocab: Vocabulary) -> Model:
     token_embedding_dim = trial.suggest_categorical(
         name='token_embedding_dim', choices=[150, 300]
     )
-
-    dialogue_extra_dim = 0
-    is_buyer_embedding_dim = trial.suggest_categorical(
-        name='is_buyer_embedding_dim', choices=[32, 64]
-    )
-    dialogue_extra_dim += is_buyer_embedding_dim
-
     token_vocab_size = vocab.get_vocab_size('tokens')
     text_field_embedder = BasicTextFieldEmbedder(
         token_embedders={
@@ -131,14 +137,36 @@ def create_model(trial: optuna.Trial,
         }
     )
 
-    sentence_encoder = create_sentence_encoder(
-        trial=trial, token_embedding_dim=token_embedding_dim
-    )
+    if FLAGS.model_type == 'token':
+        dialogue_extra_dim = 0
+        is_buyer_embedding_dim = trial.suggest_categorical(
+            name='is_buyer_embedding_dim', choices=[32, 64]
+        )
+        dialogue_extra_dim += is_buyer_embedding_dim
 
-    dialogue_encoder = create_dialogue_encoder(
-        trial=trial,
-        sentence_encoder_output_dim=sentence_encoder.get_output_dim(),
-        extra_dim=dialogue_extra_dim
+        sentence_encoder = create_sentence_encoder(
+            trial=trial, token_embedding_dim=token_embedding_dim
+        )
+
+        dialogue_encoder = create_dialogue_encoder(
+            trial=trial,
+            sentence_encoder_output_dim=sentence_encoder.get_output_dim(),
+            extra_dim=dialogue_extra_dim
+        )
+
+        sentence_encoder_output_dropout = trial.suggest_float(
+            name='sentence_encoder_output_dropout', low=0.0, high=0.5
+        )
+    elif FLAGS.model_type == 'jamo_cnn':
+        dialogue_encoder = create_dialogue_cnn_encoder(
+            trial=trial,
+            token_embedding_dim=token_embedding_dim
+        )
+
+    embedding_dropout = trial.suggest_float(name='embedding_dropout',
+                                            low=0.0, high=0.5)
+    dialogue_encoder_output_dropout = trial.suggest_float(
+        name='dialogue_encoder_output_dropout', low=0.0, high=0.5
     )
 
     discriminator = FeedForward(
@@ -154,15 +182,6 @@ def create_model(trial: optuna.Trial,
                  0.0]
     )
 
-    embedding_dropout = trial.suggest_float(name='embedding_dropout',
-                                            low=0.0, high=0.5)
-    sentence_encoder_output_dropout = trial.suggest_float(
-        name='sentence_encoder_output_dropout', low=0.0, high=0.5
-    )
-    dialogue_encoder_output_dropout = trial.suggest_float(
-        name='dialogue_encoder_output_dropout', low=0.0, high=0.5
-    )
-
     if FLAGS.model_type == 'token':
         model = TokenModel(
             vocab=vocab,
@@ -175,6 +194,15 @@ def create_model(trial: optuna.Trial,
             sentence_encoder_output_dropout=sentence_encoder_output_dropout,
             dialogue_encoder_output_dropout=dialogue_encoder_output_dropout
         )
+    elif FLAGS.model_type == 'jamo_cnn':
+        model = JamoCnnModel(
+            vocab=vocab,
+            text_field_embedder=text_field_embedder,
+            dialogue_encoder=dialogue_encoder,
+            discriminator=discriminator,
+            embedding_dropout=embedding_dropout,
+            dialogue_encoder_output_dropout=dialogue_encoder_output_dropout
+        )
     else:
         raise ValueError('Unknown model_type')
 
@@ -182,8 +210,14 @@ def create_model(trial: optuna.Trial,
 
 
 def optimize(trial: optuna.Trial) -> float:
-    reader = TokenReader(maximum_dialogue_length=FLAGS.max_dialogue_length,
-                         maximum_sentence_length=FLAGS.max_sentence_length)
+    if FLAGS.model_type == 'token':
+        reader = TokenReader(maximum_dialogue_length=FLAGS.max_dialogue_length,
+                             maximum_sentence_length=FLAGS.max_sentence_length)
+    elif FLAGS.model_type == 'jamo_cnn':
+        reader = JamoReader(maximum_dialogue_length=FLAGS.max_dialogue_length,
+                            maximum_sentence_length=FLAGS.max_sentence_length)
+    else:
+        raise ValueError('Unknown model_type')
 
     train_dataset = reader.read(FLAGS.train_data_path)
     dev_dataset = reader.read(FLAGS.dev_data_path)
@@ -271,6 +305,11 @@ def optimize(trial: optuna.Trial) -> float:
         metrics = trainer.train()
         return metrics['best_validation_loss']
 
+def validate_flags_encoder(flags_dict):
+    if flags_dict['model_type'] == 'token':
+        if flags_dict['sentence_encoder_type'] is None or flags_dict['dialogue_encoder_type'] is None:
+            return False
+    return True
 
 def main(argv):
     if FLAGS.val_metric == 'accuracy':
@@ -294,9 +333,14 @@ def main(argv):
 
 if __name__ == '__main__':
     flags.mark_flags_as_required([
-        'model_type', 'sentence_encoder_type', 'dialogue_encoder_type',
-        'min_token_count',
+        'model_type', 'min_token_count',
         'train_data_path', 'dev_data_path', 'save_root_dir',
         'optuna_study_name'
     ])
+    flags.register_multi_flags_validator(
+        flag_names=['model_type', 'sentence_encoder_type', 'dialogue_encoder_type'],
+        multi_flags_checker=validate_flags_encoder,
+        message='When model_type is "token", sentence_encoder_type and dialogue_encoder_type '
+                'should be provided')
+
     app.run(main)
