@@ -1,7 +1,9 @@
+from typing import Dict
 import json
 from pathlib import Path
 
 import torch
+from torch.nn import Module
 import torch.nn.functional as F
 from absl import app, flags, logging
 from allennlp.data import PyTorchDataLoader, Vocabulary
@@ -15,8 +17,9 @@ from allennlp.nn import util as nn_util
 from allennlp.training.metrics import F1Measure, Auc
 from tqdm import tqdm
 
-from dataset_readers import TokenReader
-from models import TokenModel
+from dataset_readers import TokenReader, JamoReader
+from models import TokenModel, JamoCnnModel
+from modules import CnnDialogueEncoder
 
 FLAGS = flags.FLAGS
 
@@ -39,7 +42,7 @@ flags.DEFINE_integer('batch_size', default=64,
                      help='Batch size')
 
 
-def create_sentence_encoder(params):
+def create_sentence_encoder(params: Dict = None):
     if params['sentence_encoder_type'] == 'boe':
         encoder = BagOfEmbeddingsEncoder(
             embedding_dim=params['token_embedding_dim'],
@@ -64,7 +67,8 @@ def create_sentence_encoder(params):
     return encoder
 
 
-def create_dialogue_encoder(params, extra_dim):
+def create_dialogue_encoder(params: Dict = None,
+                            extra_dim: int = None):
     if params['sentence_encoder_type'] == 'bilstm':
         params['sentence_encoder_hidden_dim'] = params['sentence_encoder_hidden_dim'] * 2
     elif params['sentence_encoder_type'] == 'boe':
@@ -85,6 +89,15 @@ def create_dialogue_encoder(params, extra_dim):
         )
     else:
         raise ValueError('Unknown dialogue_encoder_type')
+    return encoder
+
+
+def create_dialogue_cnn_encoder(params: Dict = None) -> Module:
+    encoder = CnnDialogueEncoder(
+        embedding_dim=params['token_embedding_dim'],
+        num_filters=params['dialogue_cnn_encoder_num_filters'],
+        ngram_filter_sizes=(3, 4, 5)
+    )
     return encoder
 
 
@@ -118,13 +131,18 @@ def main(argv):
                                 num_embeddings=vocab.get_vocab_size('tokens'))
         }
     )
+    if params['model_type'] == 'token':
+        dialogue_extra_dim = 0
+        dialogue_extra_dim += params['is_buyer_embedding_dim']
 
-    dialogue_extra_dim = 0
-    dialogue_extra_dim += params['is_buyer_embedding_dim']
+        sentence_encoder = create_sentence_encoder(params=params)
+        dialogue_encoder = create_dialogue_encoder(params=params,
+                                                   extra_dim=dialogue_extra_dim)
+    elif params['model_type'] == 'jamo_cnn':
+        dialogue_encoder = create_dialogue_cnn_encoder(params=params)
+    else:
+        raise ValueError('Unknown model type')
 
-    sentence_encoder = create_sentence_encoder(params=params)
-    dialogue_encoder = create_dialogue_encoder(params=params,
-                                               extra_dim=dialogue_extra_dim)
     discriminator = FeedForward(
         input_dim=dialogue_encoder.get_output_dim(),
         num_layers=2,
@@ -143,6 +161,13 @@ def main(argv):
             discriminator=discriminator,
             is_buyer_embedding_dim=params['is_buyer_embedding_dim']
         )
+    elif params['model_type'] == 'jamo_cnn':
+        model = JamoCnnModel(
+            vocab=vocab,
+            text_field_embedder=text_field_embedder,
+            dialogue_encoder=dialogue_encoder,
+            discriminator=discriminator
+        )
     else:
         raise ValueError('Unknown model type')
 
@@ -159,7 +184,12 @@ def main(argv):
         model = model.to(FLAGS.cuda_device)
 
     logging.info(f'Reading data from {FLAGS.test_data_path}')
-    reader = TokenReader()
+    if params['model_type'] == 'token':
+        reader = TokenReader()
+    elif params['model_type'] == 'jamo_cnn':
+        reader = JamoReader(maximum_dialogue_length=params['max_dialogue_length'])
+    else:
+        raise ValueError('Unknown model type')
     dataset = reader.read(FLAGS.test_data_path)
     dataset.index_with(vocab)
     data_loader = PyTorchDataLoader(dataset=dataset, batch_size=FLAGS.batch_size)
@@ -175,7 +205,7 @@ def main(argv):
         batch_output_dict = model(**batch)
         f1_measure(predictions=batch_output_dict['logits'],
                    gold_labels=batch['label'])
-        auc(predictions=F.softmax(batch_output_dict['logits'],dim=1)[:,1],
+        auc(predictions=F.softmax(batch_output_dict['logits'], dim=1)[:, 1],
             gold_labels=batch['label'])
 
     metrics = model.get_metrics()
