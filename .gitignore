@@ -1,0 +1,17 @@
+# Env
+__pycache__/
+.idea/
+
+# Data
+gen-dataset.sql
+
+# Preprocess
+preprocess/README.md
+preprocess/clean_data.py
+preprocess/separate_sessions.py
+preprocess/split_into_sentences.py
+preprocess/attach_label.py
+preprocess/preprocess_all.py
+
+# Train
+optuna_studies.db
