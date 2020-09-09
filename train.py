@@ -19,15 +19,17 @@ from allennlp.nn import Activation
 from allennlp.training import Checkpointer, GradientDescentTrainer, TensorboardWriter
 from torch.nn import Module
 from torch.optim import Adam
+from torch.nn import TransformerEncoderLayer, TransformerEncoder
 
-from dataset_readers import TokenReader, JamoReader
-from models import TokenModel, JamoCnnModel
-from modules import CnnDialogueEncoder
+
+from dataset_readers import TokenReader, JamoReader, TransformerReader
+from models import TokenModel, JamoCnnModel, TokenTransformerModel
+from modules import CnnDialogueEncoder, TransformerEmbeddings
 
 FLAGS = flags.FLAGS
 
 flags.DEFINE_enum('model_type', default=None,
-                  enum_values=['token', 'jamo_cnn'],
+                  enum_values=['token', 'jamo_cnn', 'token_transformer'],
                   help='Model type')
 flags.DEFINE_enum('sentence_encoder_type', default=None,
                   enum_values=['boe', 'lstm', 'bilstm'],
@@ -123,9 +125,21 @@ def create_dialogue_cnn_encoder(trial: optuna.Trial,
     )
     return encoder
 
+def create_transformer_encoder_layer(trial: optuna.Trial,
+                                     token_embedding_dim: int) -> Module:
+    encoder = TransformerEncoderLayer(
+        d_model=token_embedding_dim,
+        nhead=trial.suggest_categorical(
+            name='transformer_encoder_layer_nhead', choices=[4, 8]
+        ),
+        dropout=trial.suggest_float(
+            name='transformer_encoder_layer_dropout', low=0.0, high=0.5
+        )
+    )
+    return encoder
 
-def create_model(trial: optuna.Trial,
-                 vocab: Vocabulary) -> Model:
+def create_token_model(trial: optuna.Trial,
+                       vocab: Vocabulary) -> Model:
     token_embedding_dim = trial.suggest_categorical(
         name='token_embedding_dim', choices=[150, 300]
     )
@@ -137,31 +151,25 @@ def create_model(trial: optuna.Trial,
         }
     )
 
-    if FLAGS.model_type == 'token':
-        dialogue_extra_dim = 0
-        is_buyer_embedding_dim = trial.suggest_categorical(
-            name='is_buyer_embedding_dim', choices=[32, 64]
-        )
-        dialogue_extra_dim += is_buyer_embedding_dim
+    dialogue_extra_dim = 0
+    is_buyer_embedding_dim = trial.suggest_categorical(
+        name='is_buyer_embedding_dim', choices=[32, 64]
+    )
+    dialogue_extra_dim += is_buyer_embedding_dim
 
-        sentence_encoder = create_sentence_encoder(
-            trial=trial, token_embedding_dim=token_embedding_dim
-        )
+    sentence_encoder = create_sentence_encoder(
+        trial=trial, token_embedding_dim=token_embedding_dim
+    )
 
-        dialogue_encoder = create_dialogue_encoder(
-            trial=trial,
-            sentence_encoder_output_dim=sentence_encoder.get_output_dim(),
-            extra_dim=dialogue_extra_dim
-        )
+    dialogue_encoder = create_dialogue_encoder(
+        trial=trial,
+        sentence_encoder_output_dim=sentence_encoder.get_output_dim(),
+        extra_dim=dialogue_extra_dim
+    )
 
-        sentence_encoder_output_dropout = trial.suggest_float(
-            name='sentence_encoder_output_dropout', low=0.0, high=0.5
-        )
-    elif FLAGS.model_type == 'jamo_cnn':
-        dialogue_encoder = create_dialogue_cnn_encoder(
-            trial=trial,
-            token_embedding_dim=token_embedding_dim
-        )
+    sentence_encoder_output_dropout = trial.suggest_float(
+        name='sentence_encoder_output_dropout', low=0.0, high=0.5
+    )
 
     embedding_dropout = trial.suggest_float(name='embedding_dropout',
                                             low=0.0, high=0.5)
@@ -182,32 +190,113 @@ def create_model(trial: optuna.Trial,
                  0.0]
     )
 
-    if FLAGS.model_type == 'token':
-        model = TokenModel(
-            vocab=vocab,
-            text_field_embedder=text_field_embedder,
-            sentence_encoder=sentence_encoder,
-            dialogue_encoder=dialogue_encoder,
-            discriminator=discriminator,
-            is_buyer_embedding_dim=is_buyer_embedding_dim,
-            embedding_dropout=embedding_dropout,
-            sentence_encoder_output_dropout=sentence_encoder_output_dropout,
-            dialogue_encoder_output_dropout=dialogue_encoder_output_dropout
-        )
-    elif FLAGS.model_type == 'jamo_cnn':
-        model = JamoCnnModel(
-            vocab=vocab,
-            text_field_embedder=text_field_embedder,
-            dialogue_encoder=dialogue_encoder,
-            discriminator=discriminator,
-            embedding_dropout=embedding_dropout,
-            dialogue_encoder_output_dropout=dialogue_encoder_output_dropout
-        )
-    else:
-        raise ValueError('Unknown model_type')
+    model = TokenModel(
+        vocab=vocab,
+        text_field_embedder=text_field_embedder,
+        sentence_encoder=sentence_encoder,
+        dialogue_encoder=dialogue_encoder,
+        discriminator=discriminator,
+        is_buyer_embedding_dim=is_buyer_embedding_dim,
+        embedding_dropout=embedding_dropout,
+        sentence_encoder_output_dropout=sentence_encoder_output_dropout,
+        dialogue_encoder_output_dropout=dialogue_encoder_output_dropout
+    )
 
     return model
 
+def create_jamo_cnn_model(trial: optuna.Trial,
+                          vocab: Vocabulary) -> Model:
+    token_embedding_dim = trial.suggest_categorical(
+        name='token_embedding_dim', choices=[150, 300]
+    )
+    token_vocab_size = vocab.get_vocab_size('tokens')
+    text_field_embedder = BasicTextFieldEmbedder(
+        token_embedders={
+            'tokens': Embedding(embedding_dim=token_embedding_dim,
+                                num_embeddings=token_vocab_size)
+        }
+    )
+
+    dialogue_encoder = create_dialogue_cnn_encoder(
+        trial=trial,
+        token_embedding_dim=token_embedding_dim
+    )
+
+    embedding_dropout = trial.suggest_float(name='embedding_dropout',
+                                            low=0.0, high=0.5)
+    dialogue_encoder_output_dropout = trial.suggest_float(
+        name='dialogue_encoder_output_dropout', low=0.0, high=0.5
+    )
+
+    discriminator = FeedForward(
+        input_dim=dialogue_encoder.get_output_dim(),
+        num_layers=2,
+        hidden_dims=[trial.suggest_categorical(name='discriminator_hidden_dim',
+                                               choices=[256, 512]),
+                     vocab.get_vocab_size('labels')],
+        activations=[Activation.by_name('relu')(),
+                     Activation.by_name('linear')()],
+        dropout=[trial.suggest_float(name='discriminator_dropout',
+                                     low=0.0, high=0.5),
+                 0.0]
+    )
+
+    model = JamoCnnModel(
+        vocab=vocab,
+        text_field_embedder=text_field_embedder,
+        dialogue_encoder=dialogue_encoder,
+        discriminator=discriminator,
+        embedding_dropout=embedding_dropout,
+        dialogue_encoder_output_dropout=dialogue_encoder_output_dropout
+    )
+
+    return model
+
+def create_token_transformer_model(trial: optuna.Trial,
+                                   vocab: Vocabulary) -> Model:
+    token_embedding_dim = trial.suggest_categorical(
+        name='token_embedding_dim', choices=[256, 512]
+    )
+    token_vocab_size = vocab.get_vocab_size('tokens')
+    text_field_embedder = TransformerEmbeddings(
+        vocab_size=token_vocab_size,
+        embedding_dim=token_embedding_dim,
+        dropout=trial.suggest_float(name='transformer_embedding_dropout',
+                                     low=0.0, high=0.5)
+    )
+
+    transformer_encoder_layers = create_transformer_encoder_layer(trial=trial,
+                                                                  token_embedding_dim=token_embedding_dim)
+    dialogue_encoder = TransformerEncoder(encoder_layer=transformer_encoder_layers,
+                                          num_layers=trial.suggest_categorical(
+        name='transformer_encoder_nlayers', choices=[4, 6])
+                                          )
+    dialogue_encoder_output_dropout = trial.suggest_float(
+        name='dialogue_encoder_output_dropout', low=0.0, high=0.5
+    )
+
+    discriminator = FeedForward(
+        input_dim=token_embedding_dim,
+        num_layers=2,
+        hidden_dims=[trial.suggest_categorical(name='discriminator_hidden_dim',
+                                               choices=[256, 512]),
+                     vocab.get_vocab_size('labels')],
+        activations=[Activation.by_name('relu')(),
+                     Activation.by_name('linear')()],
+        dropout=[trial.suggest_float(name='discriminator_dropout',
+                                     low=0.0, high=0.5),
+                 0.0]
+    )
+
+    model = TokenTransformerModel(
+        vocab=vocab,
+        text_field_embedder=text_field_embedder,
+        dialogue_encoder=dialogue_encoder,
+        discriminator=discriminator,
+        dialogue_encoder_output_dropout=dialogue_encoder_output_dropout
+    )
+
+    return model
 
 def optimize(trial: optuna.Trial) -> float:
     if FLAGS.model_type == 'token':
@@ -216,6 +305,8 @@ def optimize(trial: optuna.Trial) -> float:
     elif FLAGS.model_type == 'jamo_cnn':
         reader = JamoReader(maximum_dialogue_length=FLAGS.max_dialogue_length,
                             maximum_sentence_length=FLAGS.max_sentence_length)
+    elif FLAGS.model_type == 'token_transformer':
+        reader = TransformerReader()
     else:
         raise ValueError('Unknown model_type')
 
@@ -241,7 +332,17 @@ def optimize(trial: optuna.Trial) -> float:
     save_dir = Path(FLAGS.save_root_dir) / trial_name
     save_dir.mkdir(parents=True)
 
-    model = create_model(trial=trial, vocab=vocab)
+    if FLAGS.model_type == 'token':
+        model = create_token_model(trial=trial,
+                                   vocab=vocab)
+    elif FLAGS.model_type == 'jamo_cnn':
+        model = create_jamo_cnn_model(trial=trial,
+                                      vocab=vocab)
+    elif FLAGS.model_type == 'token_transformer':
+        model = create_token_transformer_model(trial=trial,
+                                               vocab=vocab)
+    else:
+        raise ValueError('Unknown model_type')
     if FLAGS.cuda_device >= 0:
         model = model.to(FLAGS.cuda_device)
 
