@@ -64,6 +64,8 @@ flags.DEFINE_integer('cuda_device', default=-1,
                      help='If given, uses this CUDA device in training')
 flags.DEFINE_float('lr', default=1e-3,
                    help='Learning rate used in training')
+flags.DEFINE_integer('warmup_steps', default=5000,
+                     help='The number of warm up steps used to lr scheduler')
 
 
 def create_sentence_encoder(trial: optuna.Trial,
@@ -378,7 +380,7 @@ def optimize(trial: optuna.Trial) -> float:
     lr_scheduler = LinearWithWarmup(optimizer=optimizer,
                                     num_epochs=20,
                                     num_steps_per_epoch=int(len(train_loader)),
-                                    warmup_steps=400)
+                                    warmup_steps=FLAGS.warmup_steps)
 
     if FLAGS.val_metric == 'accuracy':
         if FLAGS.model_type == 'token_transformer':
