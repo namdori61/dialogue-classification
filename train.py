@@ -66,6 +66,8 @@ flags.DEFINE_float('lr', default=1e-3,
                    help='Learning rate used in training')
 flags.DEFINE_integer('warmup_steps', default=5000,
                      help='The number of warm up steps used to lr scheduler')
+flags.DEFINE_integer('num_epochs', default=20,
+                     help='The number of epochs used in training')
 
 
 def create_sentence_encoder(trial: optuna.Trial,
@@ -378,7 +380,7 @@ def optimize(trial: optuna.Trial) -> float:
     )
 
     lr_scheduler = LinearWithWarmup(optimizer=optimizer,
-                                    num_epochs=20,
+                                    num_epochs=FLAGS.num_epochs,
                                     num_steps_per_epoch=int(len(train_loader)),
                                     warmup_steps=FLAGS.warmup_steps)
 
@@ -407,7 +409,7 @@ def optimize(trial: optuna.Trial) -> float:
                 patience=2,
                 validation_metric='+accuracy',
                 validation_data_loader=dev_loader,
-                num_epochs=20,
+                num_epochs=FLAGS.num_epochs,
                 serialization_dir=save_dir,
                 checkpointer=checkpointer,
                 tensorboard_writer=tensorboard_writer,
@@ -425,7 +427,7 @@ def optimize(trial: optuna.Trial) -> float:
                 patience=2,
                 validation_metric='-loss',
                 validation_data_loader=dev_loader,
-                num_epochs=20,
+                num_epochs=FLAGS.num_epochs,
                 serialization_dir=save_dir,
                 checkpointer=checkpointer,
                 tensorboard_writer=tensorboard_writer,
@@ -441,7 +443,7 @@ def optimize(trial: optuna.Trial) -> float:
                 patience=2,
                 validation_metric='-loss',
                 validation_data_loader=dev_loader,
-                num_epochs=20,
+                num_epochs=FLAGS.num_epochs,
                 serialization_dir=save_dir,
                 checkpointer=checkpointer,
                 tensorboard_writer=tensorboard_writer,
