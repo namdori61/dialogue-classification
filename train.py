@@ -61,6 +61,8 @@ flags.DEFINE_string('optuna_storage', default='sqlite:///optuna_studies.db',
                     help='Path to save Optuna results')
 flags.DEFINE_integer('cuda_device', default=-1,
                      help='If given, uses this CUDA device in training')
+flags.DEFINE_float('lr', default=1e-3,
+                   help='Learning rate used in training')
 
 
 def create_sentence_encoder(trial: optuna.Trial,
@@ -346,7 +348,8 @@ def optimize(trial: optuna.Trial) -> float:
     if FLAGS.cuda_device >= 0:
         model = model.to(FLAGS.cuda_device)
 
-    optimizer = Adam(model.parameters())
+    optimizer = Adam(params=model.parameters(),
+                     lr=FLAGS.lr)
     checkpointer = Checkpointer(serialization_dir=save_dir,
                                 num_serialized_models_to_keep=1)
 
