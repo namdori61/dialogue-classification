@@ -17,6 +17,7 @@ from allennlp.modules.seq2vec_encoders import (
 from allennlp.modules.text_field_embedders import BasicTextFieldEmbedder
 from allennlp.nn import Activation
 from allennlp.training import Checkpointer, GradientDescentTrainer, TensorboardWriter
+from allennlp.training.learning_rate_schedulers import LinearWithWarmup
 from torch.nn import Module
 from torch.optim import Adam
 from torch.nn import TransformerEncoderLayer, TransformerEncoder
@@ -374,38 +375,77 @@ def optimize(trial: optuna.Trial) -> float:
         serialization_dir=FLAGS.save_root_dir
     )
 
+    lr_scheduler = LinearWithWarmup(optimizer=optimizer,
+                                    num_epochs=20,
+                                    num_steps_per_epoch=int(len(train_loader)),
+                                    warmup_steps=400)
+
     if FLAGS.val_metric == 'accuracy':
-        trainer = GradientDescentTrainer(
-            model=model,
-            optimizer=optimizer,
-            data_loader=train_loader,
-            patience=2,
-            validation_metric='+accuracy',
-            validation_data_loader=dev_loader,
-            num_epochs=20,
-            serialization_dir=save_dir,
-            checkpointer=checkpointer,
-            tensorboard_writer=tensorboard_writer,
-            cuda_device=FLAGS.cuda_device,
-            grad_norm=5.0
-        )
+        if FLAGS.model_type == 'token_transformer':
+            trainer = GradientDescentTrainer(
+                model=model,
+                optimizer=optimizer,
+                data_loader=train_loader,
+                patience=2,
+                validation_metric='+accuracy',
+                validation_data_loader=dev_loader,
+                num_epochs=20,
+                serialization_dir=save_dir,
+                checkpointer=checkpointer,
+                tensorboard_writer=tensorboard_writer,
+                learning_rate_scheduler=lr_scheduler,
+                cuda_device=FLAGS.cuda_device,
+                grad_norm=5.0
+            )
+        else:
+            trainer = GradientDescentTrainer(
+                model=model,
+                optimizer=optimizer,
+                data_loader=train_loader,
+                patience=2,
+                validation_metric='+accuracy',
+                validation_data_loader=dev_loader,
+                num_epochs=20,
+                serialization_dir=save_dir,
+                checkpointer=checkpointer,
+                tensorboard_writer=tensorboard_writer,
+                cuda_device=FLAGS.cuda_device,
+                grad_norm=5.0
+            )
         metrics = trainer.train()
         return metrics['best_validation_accuracy']
     elif FLAGS.val_metric == 'loss':
-        trainer = GradientDescentTrainer(
-            model=model,
-            optimizer=optimizer,
-            data_loader=train_loader,
-            patience=2,
-            validation_metric='-loss',
-            validation_data_loader=dev_loader,
-            num_epochs=20,
-            serialization_dir=save_dir,
-            checkpointer=checkpointer,
-            tensorboard_writer=tensorboard_writer,
-            cuda_device=FLAGS.cuda_device,
-            grad_norm=5.0
-        )
+        if FLAGS.model_type == 'token_transformer':
+            trainer = GradientDescentTrainer(
+                model=model,
+                optimizer=optimizer,
+                data_loader=train_loader,
+                patience=2,
+                validation_metric='-loss',
+                validation_data_loader=dev_loader,
+                num_epochs=20,
+                serialization_dir=save_dir,
+                checkpointer=checkpointer,
+                tensorboard_writer=tensorboard_writer,
+                learning_rate_scheduler=lr_scheduler,
+                cuda_device=FLAGS.cuda_device,
+                grad_norm=5.0
+            )
+        else:
+            trainer = GradientDescentTrainer(
+                model=model,
+                optimizer=optimizer,
+                data_loader=train_loader,
+                patience=2,
+                validation_metric='-loss',
+                validation_data_loader=dev_loader,
+                num_epochs=20,
+                serialization_dir=save_dir,
+                checkpointer=checkpointer,
+                tensorboard_writer=tensorboard_writer,
+                cuda_device=FLAGS.cuda_device,
+                grad_norm=5.0
+            )
         metrics = trainer.train()
         return metrics['best_validation_loss']
 
