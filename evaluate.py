@@ -4,6 +4,7 @@ from pathlib import Path
 
 import torch
 from torch.nn import Module
+from torch.nn import TransformerEncoderLayer, TransformerEncoder
 import torch.nn.functional as F
 from absl import app, flags, logging
 from allennlp.data import PyTorchDataLoader, Vocabulary
@@ -17,9 +18,9 @@ from allennlp.nn import util as nn_util
 from allennlp.training.metrics import F1Measure, Auc
 from tqdm import tqdm
 
-from dataset_readers import TokenReader, JamoReader
-from models import TokenModel, JamoCnnModel
-from modules import CnnDialogueEncoder
+from dataset_readers import TokenReader, JamoReader, TransformerReader
+from models import TokenModel, JamoCnnModel, TokenTransformerModel
+from modules import CnnDialogueEncoder, TransformerEmbeddings
 
 FLAGS = flags.FLAGS
 
@@ -100,6 +101,12 @@ def create_dialogue_cnn_encoder(params: Dict = None) -> Module:
     )
     return encoder
 
+def create_transformer_encoder_layer(params: Dict = None) -> Module:
+    encoder = TransformerEncoderLayer(
+        d_model=params['token_embedding_dim'],
+        nhead=params['transformer_encoder_layer_nhead']
+    )
+    return encoder
 
 def main(argv):
     model_state_path = FLAGS.model_state_path
@@ -125,34 +132,27 @@ def main(argv):
 
     logging.info('Creating model')
 
-    text_field_embedder = BasicTextFieldEmbedder(
-        token_embedders={
-            'tokens': Embedding(embedding_dim=params['token_embedding_dim'],
-                                num_embeddings=vocab.get_vocab_size('tokens'))
-        }
-    )
     if params['model_type'] == 'token':
+        text_field_embedder = BasicTextFieldEmbedder(
+            token_embedders={
+                'tokens': Embedding(embedding_dim=params['token_embedding_dim'],
+                                    num_embeddings=vocab.get_vocab_size('tokens'))
+            }
+        )
         dialogue_extra_dim = 0
         dialogue_extra_dim += params['is_buyer_embedding_dim']
 
         sentence_encoder = create_sentence_encoder(params=params)
         dialogue_encoder = create_dialogue_encoder(params=params,
                                                    extra_dim=dialogue_extra_dim)
-    elif params['model_type'] == 'jamo_cnn':
-        dialogue_encoder = create_dialogue_cnn_encoder(params=params)
-    else:
-        raise ValueError('Unknown model type')
-
-    discriminator = FeedForward(
-        input_dim=dialogue_encoder.get_output_dim(),
-        num_layers=2,
-        hidden_dims=[params['discriminator_hidden_dim'],
-                     vocab.get_vocab_size('labels')],
-        activations=[Activation.by_name('relu')(),
-                     Activation.by_name('linear')()]
-    )
-
-    if params['model_type'] == 'token':
+        discriminator = FeedForward(
+            input_dim=dialogue_encoder.get_output_dim(),
+            num_layers=2,
+            hidden_dims=[params['discriminator_hidden_dim'],
+                         vocab.get_vocab_size('labels')],
+            activations=[Activation.by_name('relu')(),
+                         Activation.by_name('linear')()]
+        )
         model = TokenModel(
             vocab=vocab,
             text_field_embedder=text_field_embedder,
@@ -162,7 +162,44 @@ def main(argv):
             is_buyer_embedding_dim=params['is_buyer_embedding_dim']
         )
     elif params['model_type'] == 'jamo_cnn':
+        text_field_embedder = BasicTextFieldEmbedder(
+            token_embedders={
+                'tokens': Embedding(embedding_dim=params['token_embedding_dim'],
+                                    num_embeddings=vocab.get_vocab_size('tokens'))
+            }
+        )
+        dialogue_encoder = create_dialogue_cnn_encoder(params=params)
+        discriminator = FeedForward(
+            input_dim=dialogue_encoder.get_output_dim(),
+            num_layers=2,
+            hidden_dims=[params['discriminator_hidden_dim'],
+                         vocab.get_vocab_size('labels')],
+            activations=[Activation.by_name('relu')(),
+                         Activation.by_name('linear')()]
+        )
         model = JamoCnnModel(
+            vocab=vocab,
+            text_field_embedder=text_field_embedder,
+            dialogue_encoder=dialogue_encoder,
+            discriminator=discriminator
+        )
+    elif params['model_type'] == 'token_transformer':
+        text_field_embedder = TransformerEmbeddings(
+            vocab_size=vocab.get_vocab_size('tokens'),
+            embedding_dim=params['token_embedding_dim']
+        )
+        transformer_encoder_layers = create_transformer_encoder_layer(params=params)
+        dialogue_encoder = TransformerEncoder(encoder_layer=transformer_encoder_layers,
+                                              num_layers=params['transformer_encoder_nlayers'])
+        discriminator = FeedForward(
+            input_dim=params['token_embedding_dim'],
+            num_layers=2,
+            hidden_dims=[params['discriminator_hidden_dim'],
+                         vocab.get_vocab_size('labels')],
+            activations=[Activation.by_name('relu')(),
+                         Activation.by_name('linear')()]
+        )
+        model = TokenTransformerModel(
             vocab=vocab,
             text_field_embedder=text_field_embedder,
             dialogue_encoder=dialogue_encoder,
@@ -188,6 +225,8 @@ def main(argv):
         reader = TokenReader()
     elif params['model_type'] == 'jamo_cnn':
         reader = JamoReader(maximum_dialogue_length=params['max_dialogue_length'])
+    elif params['model_type'] == 'token_transformer':
+        reader = TransformerReader()
     else:
         raise ValueError('Unknown model type')
     dataset = reader.read(FLAGS.test_data_path)
