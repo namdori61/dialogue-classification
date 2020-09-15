@@ -4,6 +4,7 @@ Trains a model.
 import json
 from pathlib import Path
 import pickle
+from configparser import ConfigParser
 
 import optuna
 from absl import app, flags, logging
@@ -25,6 +26,9 @@ from torch.nn import TransformerEncoderLayer, TransformerEncoder
 from dataset_readers import TokenReader, JamoReader, TransformerReader
 from models import TokenModel, JamoCnnModel, TokenTransformerModel
 from modules import CnnDialogueEncoder, TransformerEmbeddings
+
+from knockknock import telegram_sender
+
 
 FLAGS = flags.FLAGS
 
@@ -61,6 +65,8 @@ flags.DEFINE_string('optuna_storage', default='sqlite:///optuna_studies.db',
                     help='Path to save Optuna results')
 flags.DEFINE_integer('cuda_device', default=-1,
                      help='If given, uses this CUDA device in training')
+flags.DEFINE_string('config_path', default=None,
+                    help='Path to the config file')
 
 
 def create_sentence_encoder(trial: optuna.Trial,
@@ -371,6 +377,15 @@ def optimize(trial: optuna.Trial) -> float:
         serialization_dir=FLAGS.save_root_dir
     )
 
+    parser = ConfigParser()
+    parser.read(FLAGS.config_path)
+
+    @telegram_sender(token=parser.get('telegram', 'token'),
+                     chat_id=parser.get('telegram', 'chat_id'))
+    def train_notify(trainer):
+        metrics = trainer.train()
+        return metrics
+
     if FLAGS.val_metric == 'accuracy':
         trainer = GradientDescentTrainer(
             model=model,
@@ -386,7 +401,7 @@ def optimize(trial: optuna.Trial) -> float:
             cuda_device=FLAGS.cuda_device,
             grad_norm=5.0
         )
-        metrics = trainer.train()
+        metrics = train_notify(trainer)
         return metrics['best_validation_accuracy']
     elif FLAGS.val_metric == 'loss':
         trainer = GradientDescentTrainer(
@@ -403,7 +418,7 @@ def optimize(trial: optuna.Trial) -> float:
             cuda_device=FLAGS.cuda_device,
             grad_norm=5.0
         )
-        metrics = trainer.train()
+        metrics = train_notify(trainer)
         return metrics['best_validation_loss']
 
 def validate_flags_encoder(flags_dict):
@@ -436,7 +451,7 @@ if __name__ == '__main__':
     flags.mark_flags_as_required([
         'model_type', 'min_token_count',
         'train_data_path', 'dev_data_path', 'save_root_dir',
-        'optuna_study_name'
+        'optuna_study_name', 'config_path'
     ])
     flags.register_multi_flags_validator(
         flag_names=['model_type', 'sentence_encoder_type', 'dialogue_encoder_type'],

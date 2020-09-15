@@ -2,6 +2,9 @@
 __pycache__/
 .idea/
 
+# config
+config.ini
+
 # Data
 gen-dataset.sql
 
