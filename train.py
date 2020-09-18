@@ -18,6 +18,7 @@ from allennlp.modules.seq2vec_encoders import (
 from allennlp.modules.text_field_embedders import BasicTextFieldEmbedder
 from allennlp.nn import Activation
 from allennlp.training import Checkpointer, GradientDescentTrainer, TensorboardWriter
+from allennlp.training.learning_rate_schedulers import LinearWithWarmup
 from torch.nn import Module
 from torch.optim import Adam
 from torch.nn import TransformerEncoderLayer, TransformerEncoder
@@ -65,6 +66,12 @@ flags.DEFINE_string('optuna_storage', default='sqlite:///optuna_studies.db',
                     help='Path to save Optuna results')
 flags.DEFINE_integer('cuda_device', default=-1,
                      help='If given, uses this CUDA device in training')
+flags.DEFINE_float('lr', default=1e-3,
+                   help='Learning rate used in training')
+flags.DEFINE_integer('warmup_steps', default=5000,
+                     help='The number of warm up steps used to lr scheduler')
+flags.DEFINE_integer('num_epochs', default=20,
+                     help='The number of epochs used in training')
 flags.DEFINE_string('config_path', default=None,
                     help='Path to the config file')
 flags.DEFINE_integer('max_epochs', default=20,
@@ -354,7 +361,8 @@ def optimize(trial: optuna.Trial) -> float:
     if FLAGS.cuda_device >= 0:
         model = model.to(FLAGS.cuda_device)
 
-    optimizer = Adam(model.parameters())
+    optimizer = Adam(params=model.parameters(),
+                     lr=FLAGS.lr)
     checkpointer = Checkpointer(serialization_dir=save_dir,
                                 num_serialized_models_to_keep=1)
 
@@ -378,6 +386,11 @@ def optimize(trial: optuna.Trial) -> float:
     tensorboard_writer = TensorboardWriter(
         serialization_dir=FLAGS.save_root_dir
     )
+
+    lr_scheduler = LinearWithWarmup(optimizer=optimizer,
+                                    num_epochs=FLAGS.num_epochs,
+                                    num_steps_per_epoch=int(len(train_loader)),
+                                    warmup_steps=FLAGS.warmup_steps)
 
     parser = ConfigParser()
     parser.read(FLAGS.config_path)
