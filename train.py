@@ -413,6 +413,7 @@ def optimize(trial: optuna.Trial) -> float:
             serialization_dir=save_dir,
             checkpointer=checkpointer,
             tensorboard_writer=tensorboard_writer,
+            learning_rate_scheduler=lr_scheduler,
             cuda_device=FLAGS.cuda_device,
             grad_norm=5.0
         )
@@ -430,6 +431,7 @@ def optimize(trial: optuna.Trial) -> float:
             serialization_dir=save_dir,
             checkpointer=checkpointer,
             tensorboard_writer=tensorboard_writer,
+            learning_rate_scheduler=lr_scheduler,
             cuda_device=FLAGS.cuda_device,
             grad_norm=5.0
         )
