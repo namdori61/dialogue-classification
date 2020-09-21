@@ -392,8 +392,9 @@ def optimize(trial: optuna.Trial) -> float:
                                     num_steps_per_epoch=int(len(train_loader)),
                                     warmup_steps=FLAGS.warmup_steps)
 
-    parser = ConfigParser()
-    parser.read(FLAGS.config_path)
+    if FLAGS.config_path is not None:
+        parser = ConfigParser()
+        parser.read(FLAGS.config_path)
 
     @telegram_sender(token=parser.get('telegram', 'token'),
                      chat_id=parser.get('telegram', 'chat_id'))
@@ -417,7 +418,10 @@ def optimize(trial: optuna.Trial) -> float:
             cuda_device=FLAGS.cuda_device,
             grad_norm=5.0
         )
-        metrics = train_notify(trainer)
+        if FLAGS.config_path is not None:
+            metrics = train_notify(trainer)
+        else:
+            metrics = trainer.train()
         return metrics['best_validation_accuracy']
     elif FLAGS.val_metric == 'loss':
         trainer = GradientDescentTrainer(
@@ -435,7 +439,10 @@ def optimize(trial: optuna.Trial) -> float:
             cuda_device=FLAGS.cuda_device,
             grad_norm=5.0
         )
-        metrics = train_notify(trainer)
+        if FLAGS.config_path is not None:
+            metrics = train_notify(trainer)
+        else:
+            metrics = trainer.train()
         return metrics['best_validation_loss']
 
 def validate_flags_encoder(flags_dict):
