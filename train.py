@@ -145,7 +145,7 @@ def create_transformer_encoder_layer(trial: optuna.Trial,
     encoder = TransformerEncoderLayer(
         d_model=token_embedding_dim,
         nhead=trial.suggest_categorical(
-            name='transformer_encoder_layer_nhead', choices=[6, 8]
+            name='transformer_encoder_layer_nhead', choices=[4, 8]
         ),
         dropout=trial.suggest_float(
             name='transformer_encoder_layer_dropout', low=0.0, high=0.5
