@@ -74,8 +74,6 @@ flags.DEFINE_integer('num_epochs', default=20,
                      help='The number of epochs used in training')
 flags.DEFINE_string('config_path', default=None,
                     help='Path to the config file')
-flags.DEFINE_integer('max_epochs', default=20,
-                     help='If given, uses this max epochs in training')
 
 
 def create_sentence_encoder(trial: optuna.Trial,
@@ -410,7 +408,7 @@ def optimize(trial: optuna.Trial) -> float:
             patience=2,
             validation_metric='+accuracy',
             validation_data_loader=dev_loader,
-            num_epochs=FLAGS.max_epochs,
+            num_epochs=FLAGS.num_epochs,
             serialization_dir=save_dir,
             checkpointer=checkpointer,
             tensorboard_writer=tensorboard_writer,
@@ -431,7 +429,7 @@ def optimize(trial: optuna.Trial) -> float:
             patience=2,
             validation_metric='-loss',
             validation_data_loader=dev_loader,
-            num_epochs=FLAGS.max_epochs,
+            num_epochs=FLAGS.num_epochs,
             serialization_dir=save_dir,
             checkpointer=checkpointer,
             tensorboard_writer=tensorboard_writer,
