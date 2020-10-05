@@ -18,3 +18,6 @@ preprocess/preprocess_all.py
 
 # Train
 optuna_studies.db
+
+# Kobert intall
+KoBERT/
