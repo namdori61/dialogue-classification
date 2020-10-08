@@ -108,7 +108,9 @@ class TokenBertModel(LightningModule):
         optimizer.step()
         optimizer.zero_grad()
 
-    def training_step(self, batch, batch_idx) -> Union[
+    def training_step(self,
+                      batch: Dict = None,
+                      batch_idx: int = None) -> Union[
         int, Dict[
             str, Union[
                 Tensor, Dict[str, Tensor]
@@ -129,7 +131,9 @@ class TokenBertModel(LightningModule):
 
         return {'loss': loss, 'log': train_logs}
 
-    def validation_step(self, batch, batch_idx) -> Dict[str, Tensor]:
+    def validation_step(self,
+                        batch: Dict = None,
+                        batch_idx: int = None) -> Dict[str, Tensor]:
         logits = self.forward(batch)
         labels = batch['label']
         loss_fct = CrossEntropyLoss()
