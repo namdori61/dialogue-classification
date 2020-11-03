@@ -65,6 +65,7 @@ def main(argv):
 
     checkpoint_callback = ModelCheckpoint(
         filepath=FLAGS.save_dir,
+        prefix=FLAGS.version,
         save_top_k=1,
         monitor='val_loss',
         mode='min'
@@ -101,10 +102,9 @@ def main(argv):
                           distributed_backend='ddp',
                           log_gpu_memory=True,
                           checkpoint_callback=checkpoint_callback,
-                          early_stop_callback=early_stop,
                           max_epochs=FLAGS.max_epochs,
                           logger=logger,
-                          callbacks=[lr_monitor])
+                          callbacks=[lr_monitor, early_stop])
         logging.info(f'There are {torch.cuda.device_count()} GPU(s) available.')
         logging.info(f'Use the number of GPU: {FLAGS.cuda_device}')
     elif FLAGS.cuda_device == 1:
@@ -112,19 +112,17 @@ def main(argv):
                           gpus=FLAGS.cuda_device,
                           log_gpu_memory=True,
                           checkpoint_callback=checkpoint_callback,
-                          early_stop_callback=early_stop,
                           max_epochs=FLAGS.max_epochs,
                           logger=logger,
-                          callbacks=[lr_monitor])
+                          callbacks=[lr_monitor, early_stop])
         logging.info(f'There are {torch.cuda.device_count()} GPU(s) available.')
         logging.info(f'Use the number of GPU: {FLAGS.cuda_device}')
     else:
         trainer = Trainer(deterministic=True,
                           checkpoint_callback=checkpoint_callback,
-                          early_stop_callback=early_stop,
                           max_epochs=FLAGS.max_epochs,
                           logger=logger,
-                          callbacks=[lr_monitor])
+                          callbacks=[lr_monitor, early_stop])
         logging.info('No GPU available, using the CPU instead.')
     if FLAGS.config_path is not None:
         train_notify(trainer=trainer,

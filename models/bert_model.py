@@ -6,7 +6,6 @@ from torch.optim import Optimizer
 from torch.utils.data import DataLoader, RandomSampler, DistributedSampler
 from torch.nn import CrossEntropyLoss
 from pytorch_lightning.core.lightning import LightningModule
-from pytorch_lightning import TrainResult, EvalResult
 from pytorch_lightning.metrics.functional.classification import accuracy, precision_recall, f1_score
 from transformers.modeling_bert import BertModel
 from transformers import BertTokenizer, AdamW
@@ -123,7 +122,7 @@ class TokenBertModel(LightningModule):
 
     def training_step(self,
                       batch: Dict = None,
-                      batch_idx: int = None) -> TrainResult:
+                      batch_idx: int = None) -> Dict[str, Tensor]:
         logits = self.forward(batch)
         labels = batch['label']
         loss_fct = CrossEntropyLoss()
@@ -135,11 +134,10 @@ class TokenBertModel(LightningModule):
 
         acc = accuracy(pred, labels.view(-1), num_classes=self.num_classes)
 
-        result = TrainResult(loss)
-        result.log('train_loss', loss, on_step=True)
-        result.log('train_acc', acc, on_epoch=True)
+        self.log('train_loss', loss, on_step=True)
+        self.log('train_acc', acc, on_epoch=True)
 
-        return result
+        return {'loss': loss, 'acc': acc}
 
     def validation_step(self,
                         batch: Dict = None,
@@ -151,23 +149,20 @@ class TokenBertModel(LightningModule):
 
         pred = torch.argmax(logits, dim=1)
 
-        result = EvalResult(early_stop_on=loss)
-        result.log('val_loss', loss)
+        self.log('val_loss', loss)
 
         return {'loss': loss, 'pred': pred, 'label': labels}
 
     def validation_epoch_end(
             self,
             outputs: Union[List[Dict[str, Tensor]], List[List[Dict[str, Tensor]]]]
-    ) -> EvalResult:
+    ) -> None:
         avg_loss = torch.stack([x['loss'] for x in outputs]).mean()
         avg_acc = torch.stack([accuracy(x['pred'], x['label'].view(-1), num_classes=self.num_classes)
                                for x in outputs]).mean()
 
-        result = EvalResult(early_stop_on=avg_loss, checkpoint_on=avg_loss)
-        result.log('avg_val_loss', avg_loss)
-        result.log('avg_val_acc', avg_acc)
-        return result
+        self.log('avg_val_loss', avg_loss)
+        self.log('avg_val_acc', avg_acc)
 
     def test_step(self,
                   batch: Dict = None,
@@ -179,14 +174,13 @@ class TokenBertModel(LightningModule):
 
         pred = torch.argmax(logits, dim=1)
 
-        result = EvalResult(loss)
-        result.log('test_loss', loss)
+        self.log('test_loss', loss)
 
         return {'loss': loss, 'pred': pred, 'label': labels}
 
     def test_epoch_end(
-            self, outputs: Union[EvalResult, List[EvalResult]]
-    ) -> EvalResult:
+            self, outputs: Union[Dict[str, Tensor], List[Dict[str, Tensor]]]
+    ) -> Dict[str, Tensor]:
         avg_loss = torch.stack([x['loss'] for x in outputs]).mean()
         avg_acc = torch.stack([accuracy(x['pred'], x['label'].view(-1), num_classes=self.num_classes)
                                for x in outputs]).mean()
@@ -204,5 +198,4 @@ class TokenBertModel(LightningModule):
         print(f'Recall: {recall:.4f}')
         print(f'F1: {f1:.4f}')
 
-        result = EvalResult(avg_loss)
-        return result
+        return {'test_loss': avg_loss}
