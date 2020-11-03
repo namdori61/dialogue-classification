@@ -39,9 +39,10 @@ def main(argv):
 
     logging.info('Running evaluation')
     if FLAGS.cuda_device > 0:
-        trainer = Trainer(gpus=FLAGS.cuda_device)
+        trainer = Trainer(deterministic=True,
+                          gpus=FLAGS.cuda_device)
     else:
-        trainer = Trainer()
+        trainer = Trainer(deterministic=True)
 
     trainer.test(model=model)
 
