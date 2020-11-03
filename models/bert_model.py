@@ -180,7 +180,7 @@ class TokenBertModel(LightningModule):
 
     def test_epoch_end(
             self, outputs: Union[Dict[str, Tensor], List[Dict[str, Tensor]]]
-    ) -> Dict[str, Tensor]:
+    ) -> None:
         avg_loss = torch.stack([x['loss'] for x in outputs]).mean()
         avg_acc = torch.stack([accuracy(x['pred'], x['label'].view(-1), num_classes=self.num_classes)
                                for x in outputs]).mean()
@@ -197,5 +197,3 @@ class TokenBertModel(LightningModule):
         print(f'Precision: {precision:.4f}')
         print(f'Recall: {recall:.4f}')
         print(f'F1: {f1:.4f}')
-
-        return {'test_loss': avg_loss}
