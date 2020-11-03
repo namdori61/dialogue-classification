@@ -16,6 +16,8 @@ flags.DEFINE_string('test_data_path', default=None,
                     help='Path to the test data')
 flags.DEFINE_integer('cuda_device', default=-1,
                      help='If given, uses this CUDA device in evaluation')
+flags.DEFINE_integer('num_workers', default=0,
+                     help='If given, uses this number of workers in data loading')
 flags.DEFINE_integer('batch_size', default=64,
                      help='Batch size')
 
@@ -27,6 +29,7 @@ def main(argv):
         model = TokenBertModel(model='bert-base-multilingual-cased',
                                tokenizer=tokenizer,
                                test_path=FLAGS.test_data_path,
+                               num_workers=FLAGS.num_workers,
                                batch_size=FLAGS.batch_size)
     else:
         raise ValueError('Unknown model type')
