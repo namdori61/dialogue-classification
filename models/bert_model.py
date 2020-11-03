@@ -6,7 +6,8 @@ from torch.optim import Optimizer
 from torch.utils.data import DataLoader, RandomSampler, DistributedSampler
 from torch.nn import CrossEntropyLoss
 from pytorch_lightning.core.lightning import LightningModule
-from pytorch_lightning.metrics.functional import accuracy
+from pytorch_lightning import TrainResult, EvalResult
+from pytorch_lightning.metrics.functional.classification import accuracy, precision_recall, f1_score
 from transformers.modeling_bert import BertModel
 from transformers import BertTokenizer, AdamW
 
@@ -15,10 +16,11 @@ from dataset_readers import BertReader
 
 class TokenBertModel(LightningModule):
     def __init__(self,
-                 train_path: str = None,
-                 dev_path: str = None,
                  model: str = None,
                  tokenizer: BertTokenizer = None,
+                 train_path: str = None,
+                 dev_path: str = None,
+                 test_path: str = None,
                  num_classes: int = 2,
                  cuda_device: int = 0,
                  batch_size: int = 4,
@@ -36,12 +38,17 @@ class TokenBertModel(LightningModule):
         self.weight_decay = weight_decay
         self.warm_up = warm_up
 
-        self.save_hyperparameters()
+        if train_path is not None:
+            self.train_dataset = BertReader(file_path=train_path,
+                                            tokenizer=tokenizer)
+        if dev_path is not None:
+            self.dev_dataset = BertReader(file_path=dev_path,
+                                          tokenizer=tokenizer)
+        if test_path is not None:
+            self.test_dataset = BertReader(file_path=test_path,
+                                           tokenizer=tokenizer)
 
-        self.train_dataset = BertReader(file_path=train_path,
-                                        tokenizer=tokenizer)
-        self.dev_dataset = BertReader(file_path=dev_path,
-                                      tokenizer=tokenizer)
+        self.save_hyperparameters()
 
         self.text_embedding = BertModel.from_pretrained(model,
                                                         output_attentions=False,
@@ -78,6 +85,12 @@ class TokenBertModel(LightningModule):
                                     num_workers=self.num_workers)
         return val_dataloader
 
+    def test_dataloader(self) -> Union[DataLoader, List[DataLoader]]:
+        test_dataloader = DataLoader(self.test_dataset,
+                                     batch_size=self.batch_size,
+                                     num_workers=self.num_workers)
+        return test_dataloader
+
     def configure_optimizers(self) -> Optional[
         Union[
             Optimizer, Sequence[Optimizer], Dict, Sequence[Dict], Tuple[List, List]
@@ -110,13 +123,7 @@ class TokenBertModel(LightningModule):
 
     def training_step(self,
                       batch: Dict = None,
-                      batch_idx: int = None) -> Union[
-        int, Dict[
-            str, Union[
-                Tensor, Dict[str, Tensor]
-            ]
-        ]
-    ]:
+                      batch_idx: int = None) -> TrainResult:
         logits = self.forward(batch)
         labels = batch['label']
         loss_fct = CrossEntropyLoss()
@@ -124,12 +131,15 @@ class TokenBertModel(LightningModule):
 
         nn.utils.clip_grad_norm_(self.parameters(), 1.0)
 
-        preds = torch.argmax(logits, dim=1)
-        acc = accuracy(preds, labels.view(-1), num_classes=self.num_classes)
+        pred = torch.argmax(logits, dim=1)
 
-        train_logs = {'train_loss': loss, 'train_accuracy': acc}
+        acc = accuracy(pred, labels.view(-1), num_classes=self.num_classes)
 
-        return {'loss': loss, 'log': train_logs}
+        result = TrainResult(loss)
+        result.log('train_loss', loss, on_step=True)
+        result.log('train_acc', acc, on_epoch=True)
+
+        return result
 
     def validation_step(self,
                         batch: Dict = None,
@@ -139,19 +149,60 @@ class TokenBertModel(LightningModule):
         loss_fct = CrossEntropyLoss()
         loss = loss_fct(logits.view(-1, self.num_classes), labels.view(-1))
 
-        preds = torch.argmax(logits, dim=1)
-        val_acc = accuracy(preds, labels.view(-1), num_classes=self.num_classes)
+        pred = torch.argmax(logits, dim=1)
 
-        return {'val_loss': loss,
-                'val_acc': val_acc}
+        result = EvalResult(early_stop_on=loss)
+        result.log('val_loss', loss)
+
+        return {'loss': loss, 'pred': pred, 'label': labels}
 
     def validation_epoch_end(
             self,
             outputs: Union[List[Dict[str, Tensor]], List[List[Dict[str, Tensor]]]]
-    ) -> Dict[str, Dict[str, Tensor]]:
-        avg_loss = torch.stack([x['val_loss'] for x in outputs]).mean()
-        avg_acc = torch.stack([x['val_acc'] for x in outputs]).mean()
+    ) -> EvalResult:
+        avg_loss = torch.stack([x['loss'] for x in outputs]).mean()
+        avg_acc = torch.stack([accuracy(x['pred'], x['label'].view(-1), num_classes=self.num_classes)
+                               for x in outputs]).mean()
 
-        logs = {'avg_val_loss': avg_loss,
-                'avg_val_acc': avg_acc}
-        return {'val_loss': avg_loss, 'log': logs}
+        result = EvalResult(early_stop_on=avg_loss, checkpoint_on=avg_loss)
+        result.log('avg_val_loss', avg_loss)
+        result.log('avg_val_acc', avg_acc)
+        return result
+
+    def test_step(self,
+                  batch: Dict = None,
+                  batch_idx: int = None) -> Dict[str, Tensor]:
+        logits = self.forward(batch)
+        labels = batch['label']
+        loss_fct = CrossEntropyLoss()
+        loss = loss_fct(logits.view(-1, self.num_classes), labels.view(-1))
+
+        pred = torch.argmax(logits, dim=1)
+
+        result = EvalResult(loss)
+        result.log('test_loss', loss)
+
+        return {'loss': loss, 'pred': pred, 'label': labels}
+
+    def test_epoch_end(
+            self, outputs: Union[EvalResult, List[EvalResult]]
+    ) -> EvalResult:
+        avg_loss = torch.stack([x['loss'] for x in outputs]).mean()
+        avg_acc = torch.stack([accuracy(x['pred'], x['label'].view(-1), num_classes=self.num_classes)
+                               for x in outputs]).mean()
+        pred = torch.cat([x['pred'] for x in outputs], dim=0)
+        target= torch.cat([x['label'].view(-1) for x in outputs], dim=0)
+
+        precision, recall = precision_recall(pred=pred,
+                                             target=target)
+        f1 = f1_score(pred=pred,
+                      target=target)
+
+        print(f'Test loss: {avg_loss:.4f}')
+        print(f'Accuracy: {avg_acc:.4f}')
+        print(f'Precision: {precision:.4f}')
+        print(f'Recall: {recall:.4f}')
+        print(f'F1: {f1:.4f}')
+
+        result = EvalResult(avg_loss)
+        return result

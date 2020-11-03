@@ -19,6 +19,8 @@ flags.DEFINE_string('train_data_path', default=None,
                     help='Path to the training dataset')
 flags.DEFINE_string('dev_data_path', default=None,
                     help='Path to the development dataset')
+flags.DEFINE_string('test_data_path', default=None,
+                    help='Path to the test dataset')
 flags.DEFINE_string('model', default=None,
                     help='Model to train (BERT, KoBERT)')
 flags.DEFINE_string('save_dir', default=None,
@@ -46,10 +48,11 @@ flags.DEFINE_string('config_path', default=None,
 def main(argv):
     if FLAGS.model == 'BERT':
         tokenizer = BertTokenizer.from_pretrained('bert-base-multilingual-cased')
-        model = TokenBertModel(train_path=FLAGS.train_data_path,
-                               dev_path=FLAGS.dev_data_path,
-                               model='bert-base-multilingual-cased',
+        model = TokenBertModel(model='bert-base-multilingual-cased',
                                tokenizer=tokenizer,
+                               train_path=FLAGS.train_data_path,
+                               dev_path=FLAGS.dev_data_path,
+                               test_path=FLAGS.test_data_path,
                                batch_size=FLAGS.batch_size,
                                num_workers=FLAGS.num_workers,
                                lr=FLAGS.lr,
