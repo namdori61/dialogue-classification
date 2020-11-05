@@ -3,10 +3,10 @@ from typing import Tuple, Dict, Union, List, Optional, Sequence
 import torch
 from torch import nn, Tensor
 from torch.optim import Optimizer
-from torch.utils.data import DataLoader, RandomSampler, DistributedSampler
+from torch.utils.data import DataLoader, RandomSampler, DistributedSampler, SequentialSampler
 from torch.nn import CrossEntropyLoss
 from pytorch_lightning.core.lightning import LightningModule
-from pytorch_lightning.metrics.functional.classification import accuracy, precision_recall, f1_score
+from pytorch_lightning.metrics.functional.classification import accuracy, precision, recall, f1_score
 from transformers.modeling_bert import BertModel
 from transformers import BertTokenizer, AdamW
 
@@ -79,13 +79,17 @@ class TokenBertModel(LightningModule):
         return train_dataloader
 
     def val_dataloader(self) -> Union[DataLoader, List[DataLoader]]:
+        sampler = SequentialSampler(self.dev_dataset)
         val_dataloader = DataLoader(self.dev_dataset,
+                                    sampler=sampler,
                                     batch_size=self.batch_size,
                                     num_workers=self.num_workers)
         return val_dataloader
 
     def test_dataloader(self) -> Union[DataLoader, List[DataLoader]]:
+        sampler = SequentialSampler(self.test_dataset)
         test_dataloader = DataLoader(self.test_dataset,
+                                     sampler=sampler,
                                      batch_size=self.batch_size,
                                      num_workers=self.num_workers)
         return test_dataloader
@@ -169,31 +173,38 @@ class TokenBertModel(LightningModule):
                   batch_idx: int = None) -> Dict[str, Tensor]:
         logits = self.forward(batch)
         labels = batch['label']
-        loss_fct = CrossEntropyLoss()
-        loss = loss_fct(logits.view(-1, self.num_classes), labels.view(-1))
 
-        pred = torch.argmax(logits, dim=1)
-
-        self.log('test_loss', loss)
-
-        return {'loss': loss, 'pred': pred, 'label': labels}
+        return {'logits': logits, 'labels': labels}
 
     def test_epoch_end(
             self, outputs: Union[Dict[str, Tensor], List[Dict[str, Tensor]]]
     ) -> None:
-        avg_loss = torch.stack([x['loss'] for x in outputs]).mean()
-        avg_acc = torch.stack([accuracy(x['pred'], x['label'].view(-1), num_classes=self.num_classes)
-                               for x in outputs]).mean()
-        pred = torch.cat([x['pred'] for x in outputs], dim=0)
-        target= torch.cat([x['label'].view(-1) for x in outputs], dim=0)
+        logits = torch.cat([x['logits'].view(-1, self.num_classes) for x in outputs], dim=0)
+        labels = torch.cat([x['labels'].view(-1) for x in outputs], dim=0)
 
-        precision, recall = precision_recall(pred=pred,
-                                             target=target)
-        f1 = f1_score(pred=pred,
-                      target=target)
+        loss_fct = CrossEntropyLoss()
+        loss = loss_fct(logits, labels)
 
-        print(f'Test loss: {avg_loss:.4f}')
-        print(f'Accuracy: {avg_acc:.4f}')
-        print(f'Precision: {precision:.4f}')
-        print(f'Recall: {recall:.4f}')
-        print(f'F1: {f1:.4f}')
+        preds = torch.argmax(logits, dim=1)
+
+        acc = accuracy(pred=preds,
+                       target=labels,
+                       num_classes=self.num_classes)
+        pr = precision(pred=preds,
+                       target=labels,
+                       num_classes=self.num_classes,
+                       class_reduction='none')
+        rc = recall(pred=preds,
+                    target=labels,
+                    num_classes=self.num_classes,
+                    class_reduction='none')
+        f1 = f1_score(pred=preds,
+                      target=labels,
+                      num_classes=self.num_classes,
+                      class_reduction='none')
+
+        print(f'Test loss: {loss:.4f}')
+        print(f'Accuracy: {acc:.4f}')
+        print(f'Precision: {pr[1]:.4f}')
+        print(f'Recall: {rc[1]:.4f}')
+        print(f'F1: {f1[1]:.4f}')

@@ -2,8 +2,10 @@ from absl import app, flags, logging
 
 from transformers import BertTokenizer
 from pytorch_lightning import Trainer
-
+from torch.utils.data import DataLoader, SequentialSampler
+from dataset_readers import BertReader
 from models import TokenBertModel
+from pytorch_lightning.core.lightning import LightningModule
 
 
 FLAGS = flags.FLAGS
@@ -12,6 +14,8 @@ flags.DEFINE_string('model_type', default=None,
                     help='Model to evaluate (BERT, KoBERT)')
 flags.DEFINE_string('model_state_path', default=None,
                     help='Path to the model state (weights) file')
+flags.DEFINE_string('hparams_path', default=None,
+                    help='Path to the model hparams file')
 flags.DEFINE_string('test_data_path', default=None,
                     help='Path to the test data')
 flags.DEFINE_integer('cuda_device', default=-1,
@@ -24,18 +28,21 @@ flags.DEFINE_integer('batch_size', default=64,
 
 def main(argv):
     logging.info('Creating model')
+    logging.info(f'Loading model states at {FLAGS.model_state_path}')
+    logging.info(f'Loading model hparams at {FLAGS.hparams_path}')
     if FLAGS.model_type == 'BERT':
         tokenizer = BertTokenizer.from_pretrained('bert-base-multilingual-cased')
-        model = TokenBertModel(model='bert-base-multilingual-cased',
-                               tokenizer=tokenizer,
-                               test_path=FLAGS.test_data_path,
-                               num_workers=FLAGS.num_workers,
-                               batch_size=FLAGS.batch_size)
+        model = TokenBertModel.load_from_checkpoint(checkpoint_path=FLAGS.model_state_path,
+                                                    hparams_file=FLAGS.hparams_path)
+        dataset = BertReader(file_path=FLAGS.test_data_path,
+                             tokenizer=tokenizer)
+        sampler = SequentialSampler(dataset)
+        dataloader = DataLoader(dataset,
+                                sampler=sampler,
+                                batch_size=FLAGS.batch_size,
+                                num_workers=FLAGS.num_workers)
     else:
         raise ValueError('Unknown model type')
-
-    logging.info(f'Loading model states at {FLAGS.model_state_path}')
-    model.load_from_checkpoint(FLAGS.model_state_path)
 
     logging.info('Running evaluation')
     if FLAGS.cuda_device > 0:
@@ -44,7 +51,8 @@ def main(argv):
     else:
         trainer = Trainer(deterministic=True)
 
-    trainer.test(model=model)
+    trainer.test(model=model,
+                 test_dataloaders=dataloader)
 
 
 if __name__ == '__main__':
