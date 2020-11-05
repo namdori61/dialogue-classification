@@ -6,7 +6,7 @@ from torch.optim import Optimizer
 from torch.utils.data import DataLoader, RandomSampler, DistributedSampler, SequentialSampler
 from torch.nn import CrossEntropyLoss
 from pytorch_lightning.core.lightning import LightningModule
-from pytorch_lightning.metrics.functional.classification import accuracy, precision, recall, f1_score
+from pytorch_lightning.metrics.functional.classification import accuracy, precision, recall, f1_score, auroc
 from transformers.modeling_bert import BertModel
 from transformers import BertTokenizer, AdamW
 
@@ -202,9 +202,12 @@ class TokenBertModel(LightningModule):
                       target=labels,
                       num_classes=self.num_classes,
                       class_reduction='none')
+        auc = auroc(pred=preds,
+                    target=labels)
 
         print(f'Test loss: {loss:.4f}')
         print(f'Accuracy: {acc:.4f}')
         print(f'Precision: {pr[1]:.4f}')
         print(f'Recall: {rc[1]:.4f}')
         print(f'F1: {f1[1]:.4f}')
+        print(f'Auc: {auc:.4f}')
