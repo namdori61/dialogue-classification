@@ -319,7 +319,8 @@ def optimize(trial: optuna.Trial) -> float:
         reader = JamoReader(maximum_dialogue_length=FLAGS.max_dialogue_length,
                             maximum_sentence_length=FLAGS.max_sentence_length)
     elif FLAGS.model_type == 'token_transformer':
-        reader = TransformerReader()
+        reader = TransformerReader(maximum_dialogue_length=FLAGS.max_dialogue_length,
+                                   maximum_sentence_length=FLAGS.max_sentence_length)
     else:
         raise ValueError('Unknown model_type')
 

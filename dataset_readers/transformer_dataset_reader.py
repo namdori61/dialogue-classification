@@ -21,14 +21,16 @@ class TransformerReader(DatasetReader):
 
     def __init__(self,
                  token_indexers: Dict[str, TokenIndexer] = None,
-                 maximum_length: int = 512,
+                 maximum_dialogue_length: int = None,
+                 maximum_sentence_length: int = None,
                  **kwargs
                  ) -> None:
         super().__init__(**kwargs)
         self._token_indexers = (
             token_indexers or {'tokens': SingleIdTokenIndexer()}
         )
-        self._maximum_length = maximum_length
+        self._maximum_dialogue_length = maximum_dialogue_length
+        self._maximum_sentence_length = maximum_sentence_length
 
     @overrides
     def _read(self, file_path: str):
@@ -63,11 +65,26 @@ class TransformerReader(DatasetReader):
         is_buyer_tags = []
         for message in messages:
             token_features = message['text']
-            tokens += [Token(feature['token']) for feature in token_features]
-            is_buyer_tags += [int(message['is_buyer'])] * len(token_features)
-        if len(tokens) > self._maximum_length:
-            tokens = tokens[:self._maximum_length]
-            is_buyer_tags = is_buyer_tags[:self._maximum_length]
+            sent_tokens = [Token(feature['token']) for feature in token_features]
+            if (self._maximum_sentence_length
+                    and len(tokens) > self._maximum_sentence_length):
+                sent_tokens = sent_tokens[:self._maximum_sentence_length]
+            tokens += sent_tokens
+            is_buyer_tags += [int(message['is_buyer'])] * len(sent_tokens)
+        if len(tokens) > 512:
+            if (self._maximum_dialogue_length
+                    and int(512 / self._maximum_sentence_length) > self._maximum_dialogue_length):
+                limit = self._maximum_sentence_length * self._maximum_dialogue_length
+                tokens = tokens[:limit]
+                is_buyer_tags = is_buyer_tags[:limit]
+            elif (self._maximum_dialogue_length
+                    and int(512 / self._maximum_sentence_length) < self._maximum_dialogue_length):
+                limit = int(512 / self._maximum_sentence_length) * self._maximum_sentence_length
+                tokens = tokens[:limit]
+                is_buyer_tags = is_buyer_tags[:limit]
+            else:
+                tokens = tokens[:512]
+                is_buyer_tags = is_buyer_tags[:512]
         text_field = TextField(tokens=tokens,
                                token_indexers=self._token_indexers)
 
