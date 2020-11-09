@@ -25,7 +25,7 @@ flags.DEFINE_string('dev_data_path', default=None,
 flags.DEFINE_string('test_data_path', default=None,
                     help='Path to the test dataset')
 flags.DEFINE_string('model', default=None,
-                    help='Model to train (BERT, KoBERT)')
+                    help='Model to train (BERT, KoBERT, KcBERT)')
 flags.DEFINE_string('save_dir', default=None,
                     help='Path to save model')
 flags.DEFINE_string('version', default=None,
@@ -74,6 +74,18 @@ def main(argv):
                                  lr=FLAGS.lr,
                                  weight_decay=FLAGS.weight_decay,
                                  warm_up=FLAGS.warm_up)
+    elif FLAGS.model == 'KcBERT':
+        tokenizer = BertTokenizer.from_pretrained('beomi/kcbert-large')
+        model = TokenBertModel(model='beomi/kcbert-large',
+                               tokenizer=tokenizer,
+                               train_path=FLAGS.train_data_path,
+                               dev_path=FLAGS.dev_data_path,
+                               test_path=FLAGS.test_data_path,
+                               batch_size=FLAGS.batch_size,
+                               num_workers=FLAGS.num_workers,
+                               lr=FLAGS.lr,
+                               weight_decay=FLAGS.weight_decay,
+                               warm_up=FLAGS.warm_up)
     else:
         raise ValueError('Unknown model type')
 
