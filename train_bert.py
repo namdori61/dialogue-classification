@@ -8,9 +8,12 @@ from pytorch_lightning.core.lightning import LightningModule
 from pytorch_lightning import Trainer, seed_everything
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, LearningRateMonitor
 from pytorch_lightning.loggers import TensorBoardLogger
+import gluonnlp as nlp
+from kobert.utils import get_tokenizer
+from kobert.pytorch_kobert import get_pytorch_kobert_model
 from knockknock import telegram_sender
 
-from models import TokenBertModel
+from models import TokenBertModel, TokenKoBertModel
 
 
 FLAGS = flags.FLAGS
@@ -58,6 +61,19 @@ def main(argv):
                                lr=FLAGS.lr,
                                weight_decay=FLAGS.weight_decay,
                                warm_up=FLAGS.warm_up)
+    elif FLAGS.model == 'KoBERT':
+        bertmodel, vocab = get_pytorch_kobert_model()
+        tokenizer = nlp.data.BERTSPTokenizer(get_tokenizer(), vocab, lower=False)
+        model = TokenKoBertModel(model=bertmodel,
+                                 tokenizer=tokenizer,
+                                 train_path=FLAGS.train_data_path,
+                                 dev_path=FLAGS.dev_data_path,
+                                 test_path=FLAGS.test_data_path,
+                                 batch_size=FLAGS.batch_size,
+                                 num_workers=FLAGS.num_workers,
+                                 lr=FLAGS.lr,
+                                 weight_decay=FLAGS.weight_decay,
+                                 warm_up=FLAGS.warm_up)
     else:
         raise ValueError('Unknown model type')
 
