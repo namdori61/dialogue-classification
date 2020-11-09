@@ -14,7 +14,7 @@ from models import TokenBertModel, TokenKoBertModel
 FLAGS = flags.FLAGS
 
 flags.DEFINE_string('model_type', default=None,
-                    help='Model to evaluate (BERT, KoBERT)')
+                    help='Model to evaluate (BERT, KoBERT, KcBERT)')
 flags.DEFINE_string('model_state_path', default=None,
                     help='Path to the model state (weights) file')
 flags.DEFINE_string('hparams_path', default=None,
@@ -51,6 +51,17 @@ def main(argv):
                                                       hparams_file=FLAGS.hparams_path)
         dataset = KoBertReader(file_path=FLAGS.test_data_path,
                                tokenizer=tokenizer)
+        sampler = SequentialSampler(dataset)
+        dataloader = DataLoader(dataset,
+                                sampler=sampler,
+                                batch_size=FLAGS.batch_size,
+                                num_workers=FLAGS.num_workers)
+    elif FLAGS.model_type == 'KcBERT':
+        tokenizer = BertTokenizer.from_pretrained('beomi/kcbert-large')
+        model = TokenBertModel.load_from_checkpoint(checkpoint_path=FLAGS.model_state_path,
+                                                    hparams_file=FLAGS.hparams_path)
+        dataset = BertReader(file_path=FLAGS.test_data_path,
+                             tokenizer=tokenizer)
         sampler = SequentialSampler(dataset)
         dataloader = DataLoader(dataset,
                                 sampler=sampler,
