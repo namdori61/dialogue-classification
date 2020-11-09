@@ -3,9 +3,12 @@ from absl import app, flags, logging
 from transformers import BertTokenizer
 from pytorch_lightning import Trainer
 from torch.utils.data import DataLoader, SequentialSampler
-from dataset_readers import BertReader
-from models import TokenBertModel
-from pytorch_lightning.core.lightning import LightningModule
+import gluonnlp as nlp
+from kobert.utils import get_tokenizer
+from kobert.pytorch_kobert import get_pytorch_kobert_model
+
+from dataset_readers import BertReader, KoBertReader
+from models import TokenBertModel, TokenKoBertModel
 
 
 FLAGS = flags.FLAGS
@@ -41,6 +44,18 @@ def main(argv):
                                 sampler=sampler,
                                 batch_size=FLAGS.batch_size,
                                 num_workers=FLAGS.num_workers)
+    elif FLAGS.model == 'KoBERT':
+        bertmodel, vocab = get_pytorch_kobert_model()
+        tokenizer = nlp.data.BERTSPTokenizer(get_tokenizer(), vocab, lower=False)
+        model = TokenKoBertModel.load_from_checkpoint(checkpoint_path=FLAGS.model_state_path,
+                                                      hparams_file=FLAGS.hparams_path)
+        dataset = KoBertReader(file_path=FLAGS.test_data_path,
+                               tokenizer=tokenizer)
+        sampler = SequentialSampler(dataset)
+        dataloader = DataLoader(dataset,
+                                sampler=sampler,
+                                batch_size=FLAGS.batch_size,
+                                num_workers=FLAGS.num_workers)
     else:
         raise ValueError('Unknown model type')
 
@@ -56,5 +71,5 @@ def main(argv):
 
 
 if __name__ == '__main__':
-    flags.mark_flags_as_required(['model_type', 'model_state_path', 'test_data_path'])
+    flags.mark_flags_as_required(['model_type', 'model_state_path', 'hparams_path', 'test_data_path'])
     app.run(main)
