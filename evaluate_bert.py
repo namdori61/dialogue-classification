@@ -44,7 +44,7 @@ def main(argv):
                                 sampler=sampler,
                                 batch_size=FLAGS.batch_size,
                                 num_workers=FLAGS.num_workers)
-    elif FLAGS.model == 'KoBERT':
+    elif FLAGS.model_type == 'KoBERT':
         bertmodel, vocab = get_pytorch_kobert_model()
         tokenizer = nlp.data.BERTSPTokenizer(get_tokenizer(), vocab, lower=False)
         model = TokenKoBertModel.load_from_checkpoint(checkpoint_path=FLAGS.model_state_path,
