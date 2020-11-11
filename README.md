@@ -7,4 +7,5 @@ dialogue classification with various NLP methodologies
 - pytorch-lightning 1.0
 - optuna
 - knockknock
-- transformers 3.2.0
+- transformers 3.3.0 (mBERT)
+- transformers 3.0.2 (KoBERT)
