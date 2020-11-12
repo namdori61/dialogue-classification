@@ -82,5 +82,5 @@ def main(argv):
 
 
 if __name__ == '__main__':
-    flags.mark_flags_as_required(['model_type', 'model_state_path', 'hparams_path', 'test_data_path'])
+    flags.mark_flags_as_required(['model_type', 'model_state_path', 'test_data_path'])
     app.run(main)
