@@ -20,6 +20,7 @@ class TokenBertModel(LightningModule):
                  train_path: str = None,
                  dev_path: str = None,
                  test_path: str = None,
+                 maximum_length: int = 512,
                  num_classes: int = 2,
                  cuda_device: int = 0,
                  batch_size: int = 4,
@@ -39,13 +40,16 @@ class TokenBertModel(LightningModule):
 
         if train_path is not None:
             self.train_dataset = BertReader(file_path=train_path,
-                                            tokenizer=tokenizer)
+                                            tokenizer=tokenizer,
+                                            maximum_length=maximum_length)
         if dev_path is not None:
             self.dev_dataset = BertReader(file_path=dev_path,
-                                          tokenizer=tokenizer)
+                                          tokenizer=tokenizer,
+                                          maximum_length=maximum_length)
         if test_path is not None:
             self.test_dataset = BertReader(file_path=test_path,
-                                           tokenizer=tokenizer)
+                                           tokenizer=tokenizer,
+                                           maximum_length=maximum_length)
 
         self.save_hyperparameters()
 

@@ -26,6 +26,8 @@ flags.DEFINE_string('test_data_path', default=None,
                     help='Path to the test dataset')
 flags.DEFINE_string('model', default=None,
                     help='Model to train (BERT, KoBERT, KcBERT)')
+flags.DEFINE_integer('maximum_length', default=512,
+                     help='If given, uses this maximum length to data loading')
 flags.DEFINE_string('save_dir', default=None,
                     help='Path to save model')
 flags.DEFINE_string('version', default=None,
@@ -56,6 +58,7 @@ def main(argv):
                                train_path=FLAGS.train_data_path,
                                dev_path=FLAGS.dev_data_path,
                                test_path=FLAGS.test_data_path,
+                               maximum_length=FLAGS.maximum_length,
                                batch_size=FLAGS.batch_size,
                                num_workers=FLAGS.num_workers,
                                lr=FLAGS.lr,
@@ -69,6 +72,7 @@ def main(argv):
                                  train_path=FLAGS.train_data_path,
                                  dev_path=FLAGS.dev_data_path,
                                  test_path=FLAGS.test_data_path,
+                                 maximum_length=FLAGS.maximum_length,
                                  batch_size=FLAGS.batch_size,
                                  num_workers=FLAGS.num_workers,
                                  lr=FLAGS.lr,
@@ -81,6 +85,7 @@ def main(argv):
                                train_path=FLAGS.train_data_path,
                                dev_path=FLAGS.dev_data_path,
                                test_path=FLAGS.test_data_path,
+                               maximum_length=FLAGS.maximum_length,
                                batch_size=FLAGS.batch_size,
                                num_workers=FLAGS.num_workers,
                                lr=FLAGS.lr,
