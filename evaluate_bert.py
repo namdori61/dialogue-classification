@@ -21,6 +21,8 @@ flags.DEFINE_string('hparams_path', default=None,
                     help='Path to the model hparams file')
 flags.DEFINE_string('test_data_path', default=None,
                     help='Path to the test data')
+flags.DEFINE_integer('maximum_length', default=512,
+                     help='If given, uses this maximum length to data loading')
 flags.DEFINE_integer('cuda_device', default=-1,
                      help='If given, uses this CUDA device in evaluation')
 flags.DEFINE_integer('num_workers', default=0,
@@ -38,7 +40,8 @@ def main(argv):
         model = TokenBertModel.load_from_checkpoint(checkpoint_path=FLAGS.model_state_path,
                                                     hparams_file=FLAGS.hparams_path)
         dataset = BertReader(file_path=FLAGS.test_data_path,
-                             tokenizer=tokenizer)
+                             tokenizer=tokenizer,
+                             maximum_length=FLAGS.maximum_length)
         sampler = SequentialSampler(dataset)
         dataloader = DataLoader(dataset,
                                 sampler=sampler,
@@ -50,7 +53,8 @@ def main(argv):
         model = TokenKoBertModel.load_from_checkpoint(checkpoint_path=FLAGS.model_state_path,
                                                       hparams_file=FLAGS.hparams_path)
         dataset = KoBertReader(file_path=FLAGS.test_data_path,
-                               tokenizer=tokenizer)
+                               tokenizer=tokenizer,
+                               maximum_length=FLAGS.maximum_length)
         sampler = SequentialSampler(dataset)
         dataloader = DataLoader(dataset,
                                 sampler=sampler,
@@ -61,7 +65,8 @@ def main(argv):
         model = TokenBertModel.load_from_checkpoint(checkpoint_path=FLAGS.model_state_path,
                                                     hparams_file=FLAGS.hparams_path)
         dataset = BertReader(file_path=FLAGS.test_data_path,
-                             tokenizer=tokenizer)
+                             tokenizer=tokenizer,
+                             maximum_length=FLAGS.maximum_length)
         sampler = SequentialSampler(dataset)
         dataloader = DataLoader(dataset,
                                 sampler=sampler,
