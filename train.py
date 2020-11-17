@@ -134,7 +134,7 @@ def create_dialogue_cnn_encoder(trial: optuna.Trial,
         num_filters=trial.suggest_categorical(
             name='dialogue_cnn_encoder_num_filters', choices=[50, 100]
         ),
-        ngram_filter_sizes=(3, 4, 5)
+        ngram_filter_sizes=(3, 4, 5, 6, 7, 8)
     )
     return encoder
 
