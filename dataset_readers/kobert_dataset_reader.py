@@ -58,7 +58,7 @@ class KoBertReader(Dataset):
         else:
             pad_num = self._maximum_length - len(is_buyer_tags)
             is_buyer_tags = is_buyer_tags + [0] * pad_num
-        encoded_tuple = self.transform(tokens)
+        encoded_tuple = self.transform([' '.join(tokens)])
 
         processed_data['input_ids'] = torch.LongTensor(encoded_tuple[0])
         processed_data['attention_mask'] = self.gen_attention_mask(processed_data['input_ids'],
